@@ -1,6 +1,6 @@
 
 ---
-- name: Playbook for January 2020 Asus BIOS update
+- name: Playbook for Asus BIOS update
   #To be run on the corresponding hosts
   hosts: test2
 #  gather_facts: no
