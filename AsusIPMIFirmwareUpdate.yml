@@ -1,0 +1,118 @@
+
+---
+- name: Playbook for January 2020 Asus BIOS update
+  #To be run on the corresponding hosts
+  hosts: test2
+#  gather_facts: no
+  remote_user: root
+  
+  tasks:
+
+    - name: create directory for IPMI firmware file
+      file:
+        path: /var/tmp/AsusIPMIFile/
+        state: directory
+
+    - name: create directory for ASUSLinuxTool
+      file:
+        path: /var/tmp/ASUSLinuxTool
+        state: directory
+   #Make sure it's the custom bios file and the latest or intended version 
+    - name: Upload the IPMI firmware File
+      unarchive:
+        src: files/P10S-I_series_ASMB8_V2.05.zip
+        dest: /var/tmp/AsusIPMIFile/
+ 
+    - name: Upload the ASUSLinuxTool
+      unarchive:
+        src: files/ASUSLinuxTool_v2.1.1.tar.gz
+        dest: /var/tmp/ASUSLinuxTool
+
+    - name: Outputdmidecode
+      shell: dmidecode
+      register: Outputdmidecode  
+  
+    - name: Stop docker since the server will reboot after installing IPMI firmware
+      service:
+        name: docker
+        state: stopped
+
+#    - name: Make the AlUpdate executable
+#      file: 
+#        dest: /var/tmp/IPMIFirmware/2.08/linux/x64/AlUpdate 
+#        mode: a+x
+
+    - name: Install ipmitool using yum
+      yum:
+        name: ipmitool
+        state: latest
+
+   # - name: get the IPMI ip address
+   #   shell: ipmitool lan print | grep "IP Address"| tail -n 1|cut -f 2 -d':' | cut -c 2-14
+   #   register: ipmioutput
+
+   # - name: show debug ipmioutput
+   #   debug:
+   #     var: ipmioutput
+
+#    - name: Install the IPMI firmware using AlUpdate
+#      shell: /var/tmp/IPMIFirmware/2.08/linux/x64/AlUpdate -f /var/tmp/IPMIFirmware/REDFISH_X10_386_20191115_unsigned.bin
+#      when:  Outputdmidecode.stdout is search ("Supermicro")
+#      ignore_errors: true
+
+    - name: Install the IPMI using ASUSLinuxTool
+      shell: /var/tmp/ASUSLinuxTool/ASUSLinuxTool.sh --bmcupdate --local /var/tmp/AsusIPMIFile/P10S-I_series_ASMB8_V2.05/P10SI205.ima 
+      when:  Outputdmidecode.stdout is search ("ASUSTeK COMPUTER")
+      register: resultIPMI
+
+    - name: redo modprobe when resultIPMI suggests it is needed
+      modprobe:
+        name: ipmi_devintf
+        state: present
+      when: resultIPMI.stderr is search "Could not open device at /dev/ipmi0"
+
+    - name: restart ipmi when resultIPMI suggests it is needed
+      service:
+        name: ipmi
+        state: restarted
+      when: resultIPMI.stderr is search "Could not open device at /dev/ipmi0"  
+      register: retryInstall
+
+    - name: Retry install the IPMI using ASUSLinuxTool
+      shell: /var/tmp/ASUSLinuxTool/ASUSLinuxTool.sh --bmcupdate --local /var/tmp/AsusIPMIFile/P10S-I_series_ASMB8_V2.05/P10SI205.ima
+      when:  retryInstall
+     
+    - name: debug resultIPMI
+      debug:
+        var: resultIPMI
+ 
+    - name: Remove the AsusBios folder
+      file:
+        path: /var/tmp/AsusIPMIFile
+   #     state: absent
+
+    - name: Remove the ASUSTool folder
+      file:
+        path: /var/tmp/ASUSLinuxTool
+   #     state: absent
+   #
+    - name: Outputdmidecode2
+      shell: dmidecode
+      register: Outputdmidecode2
+  
+    - name: debug  
+      debug:
+        var: Outputdmidecode2
+ #     when:  Outputdmidecode.stdout is search ("Supermicro")
+ #     when:  Outputdmidecode.stdout is search ("ASUSTeK COMPUTER")
+ #
+  #  - name: Reboot the server as it has the Bios Update to apply
+  #    shell: nohup bash -c "sleep 2s && shutdown -r now" &
+#     when: yumupdated.changed
+#
+  #  - name: Wait for machine to come back, wait for 20 minutes
+  #    wait_for_connection:
+  #      timeout: 1200
+  #      delay: 20
+  #    when: yumupdated.changed
+#

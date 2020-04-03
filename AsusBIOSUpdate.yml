@@ -1,0 +1,96 @@
+
+---
+- name: Playbook for January 2020 Asus BIOS update
+  #To be run on the corresponding hosts
+  hosts: test2
+#  gather_facts: no
+  remote_user: root
+  
+  tasks:
+
+    - name: create directory for Bios file
+      file:
+        path: /var/tmp/AsusBIOSFile/
+        state: directory
+
+    - name: create directory for ASUSLinuxTool
+      file:
+        path: /var/tmp/ASUSLinuxTool
+        state: directory
+   #Make sure it's the custom bios file and the latest or intended version 
+    - name: Upload the BIOS File
+      unarchive:
+        src: files/P10S-I-4503-ASPEED_VGA_PRIO.ZIP
+        dest: /var/tmp/AsusBIOSFile/
+ 
+    - name: Upload the ASUSLinuxTool
+      unarchive:
+        src: files/ASUSLinuxTool_v2.1.1.tar.gz
+        dest: /var/tmp/ASUSLinuxTool
+
+    - name: Outputdmidecode
+      shell: dmidecode
+      register: Outputdmidecode  
+  
+    - name: Stop docker since the server will reboot after installing IPMI firmware
+      service:
+        name: docker
+        state: stopped
+
+#    - name: Make the AlUpdate executable
+#      file: 
+#        dest: /var/tmp/IPMIFirmware/2.08/linux/x64/AlUpdate 
+#        mode: a+x
+
+    - name: Install ipmitool using yum
+      yum:
+        name: ipmitool
+        state: latest
+
+   # - name: get the IPMI ip address
+   #   shell: ipmitool lan print | grep "IP Address"| tail -n 1|cut -f 2 -d':' | cut -c 2-14
+   #   register: ipmioutput
+
+   # - name: show debug ipmioutput
+   #   debug:
+   #     var: ipmioutput
+
+#    - name: Install the IPMI firmware using AlUpdate
+#      shell: /var/tmp/IPMIFirmware/2.08/linux/x64/AlUpdate -f /var/tmp/IPMIFirmware/REDFISH_X10_386_20191115_unsigned.bin
+#      when:  Outputdmidecode.stdout is search ("Supermicro")
+#      ignore_errors: true
+
+    - name: Install the BIOS using ASUSLinuxTool
+      shell: /var/tmp/ASUSLinuxTool/ASUSLinuxTool.sh --biosupdate /var/tmp/AsusBIOSFile/P10S-I-4503-ASPEED_VGA_PRIO.CAP 16 
+      when:  Outputdmidecode.stdout is search ("ASUSTeK COMPUTER")
+ 
+    - name: Remove the AsusBios folder
+      file:
+        path: /var/tmp/AsusBIOSFile
+   #     state: absent
+
+    - name: Remove the ASUSTool folder
+      file:
+        path: /var/tmp/ASUSLinuxTool
+   #     state: absent
+   #
+    - name: Outputdmidecode2
+      shell: dmidecode
+      register: Outputdmidecode2
+  
+    - name: debug  
+      debug:
+        var: Outputdmidecode2
+ #     when:  Outputdmidecode.stdout is search ("Supermicro")
+ #     when:  Outputdmidecode.stdout is search ("ASUSTeK COMPUTER")
+ #
+    - name: Reboot the server as it has the Bios Update to apply
+      shell: nohup bash -c "sleep 2s && shutdown -r now" &
+#     when: yumupdated.changed
+#
+    - name: Wait for machine to come back, wait for 20 minutes
+      wait_for_connection:
+        timeout: 1200
+        delay: 20
+      when: yumupdated.changed
+#
